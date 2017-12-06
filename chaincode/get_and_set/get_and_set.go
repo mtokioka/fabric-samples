@@ -1,6 +1,7 @@
 package main
 
 import (
+  "bytes"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -32,6 +33,8 @@ func (s *SmartContract) Invoke(APIstub shim.ChaincodeStubInterface) sc.Response 
 		return s.get(APIstub, args)
 	} else if function == "set" {
 		return s.set(APIstub, args)
+	} else if function == "get_all" {
+		return s.getAll(APIstub)
 	} else if function == "initLedger" {
 		return s.initLedger(APIstub)
 	}
@@ -49,6 +52,52 @@ func (s *SmartContract) get(APIstub shim.ChaincodeStubInterface, args []string) 
 	dataAsBytes, _ := APIstub.GetState(args[0])
 	return shim.Success(dataAsBytes)
 }
+
+// 全データを取ってくるだけ
+
+func (s *SmartContract) getAll(APIstub shim.ChaincodeStubInterface) sc.Response {
+
+  startKey := "D:0"
+  endKey := "D:99"
+
+  resultsIterator, err := APIstub.GetStateByRange(startKey, endKey)
+  if err != nil {
+    return shim.Error(err.Error())
+  }
+  defer resultsIterator.Close()
+
+  // buffer is a JSON array containing QueryResults
+  var buffer bytes.Buffer
+  buffer.WriteString("[")
+
+  bArrayMemberAlreadyWritten := false
+  for resultsIterator.HasNext() {
+    queryResponse, err := resultsIterator.Next()
+    if err != nil {
+      return shim.Error(err.Error())
+    }
+    // Add a comma before array members, suppress it for the first array member
+    if bArrayMemberAlreadyWritten == true {
+      buffer.WriteString(",")
+    }
+    buffer.WriteString("{\"Key\":")
+    buffer.WriteString("\"")
+    buffer.WriteString(queryResponse.Key)
+    buffer.WriteString("\"")
+
+    buffer.WriteString(", \"Record\":")
+    // Record is a JSON object, so we write as-is
+    buffer.WriteString(string(queryResponse.Value))
+    buffer.WriteString("}")
+    bArrayMemberAlreadyWritten = true
+  }
+  buffer.WriteString("]")
+
+  fmt.Printf("- queryAllCars:\n%s\n", buffer.String())
+
+  return shim.Success(buffer.Bytes())
+}
+
 
 // 初期化処理
 func (s *SmartContract) initLedger(APIstub shim.ChaincodeStubInterface) sc.Response {
